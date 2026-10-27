@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 import { globalScene } from "#app/global-scene";
+import { BattleType } from "#enums/battle-type";
 import type { Command } from "#enums/command";
+import { GameModes } from "#enums/game-modes";
 import type { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";
 import { EnemyPokemon } from "#field/pokemon";
@@ -11,8 +13,9 @@ import { GameOverPhase } from "#phases/game-over-phase";
 import { MysteryEncounterOptionSelectedPhase, MysteryEncounterPhase } from "#phases/mystery-encounter-phases";
 import { SwitchPhase } from "#phases/switch-phase";
 import { VictoryPhase } from "#phases/victory-phase";
-import { logBattleEnd, logDreamTransformations, logEncounterChoice } from "./log";
-import { isPvpMatchActive } from "./state";
+import { loggedInUser } from "#app/account";
+import { logBattleEnd, logDreamTransformations, logEncounterChoice, registerClearedRun } from "./log";
+import { isPvpMatchActive, pvpEnabled } from "./state";
 import { chooseTrainerTera, trainerPersonality, withTrainerMoveWeights } from "./trainer-ai";
 
 interface BattleHooks {
@@ -161,6 +164,16 @@ export function installBattleHooks(handlers: BattleHooks): () => void {
       function (this: GameOverPhase) {
         if (isPvpMatchActive() && handlers.handlePvpLoss()) {
           return;
+        }
+        if (pvpEnabled && !isPvpMatchActive() && globalScene.gameMode.modeId === GameModes.CLASSIC
+          && globalScene.currentBattle.waveIndex === 200 && globalScene.currentBattle.battleType === BattleType.CLEAR) {
+          // BattleEnd has finished by this point; preserve the final candidate
+          // before GameOver makes its first network request.
+          try {
+            registerClearedRun(globalScene.gameData.getSessionSaveData(), loggedInUser?.username);
+          } catch (error) {
+            console.warn("Failed to prepare cleared party registration:", error);
+          }
         }
         return original.call(this);
       },

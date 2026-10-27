@@ -1108,6 +1108,17 @@ export class GameData {
     if (isPvpMatchActive()) {
       return [true, false];
     }
+    const sessionData = this.getSessionSaveData();
+    const clearAccount = loggedInUser?.username;
+    // Preserve the clear before any network request, including finalization and
+    // account refresh, so a lost response or offline connection can be retried.
+    if (!bypassLogin) {
+      try {
+        registerClearedRun(sessionData, clearAccount);
+      } catch (error) {
+        console.warn("Failed to prepare cleared party registration:", error);
+      }
+    }
     await finalizeRun(globalScene.seed).catch(err => console.warn("PvP run finalize error:", err));
     const [success] = await updateUserInfo();
     if (!success) {
@@ -1119,8 +1130,6 @@ export class GameData {
       return [true, true];
     }
 
-    const sessionData = this.getSessionSaveData();
-    const clearAccount = loggedInUser?.username;
     const { trainerId } = this;
     const jsonResponse = await pokerogueApi.savedata.session.clear(
       { slot: slotId, trainerId, clientSessionId },
@@ -1128,7 +1137,6 @@ export class GameData {
     );
 
     if (!jsonResponse.error) {
-      registerClearedRun(sessionData, clearAccount);
       localStorage.removeItem(getSessionDataLocalStorageKey(slotId));
       return [true, !!jsonResponse.success];
     }

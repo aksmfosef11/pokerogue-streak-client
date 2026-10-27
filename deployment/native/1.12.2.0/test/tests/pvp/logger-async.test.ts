@@ -102,6 +102,7 @@ describe("Ranked journal async account isolation", () => {
     const request = vi.spyOn(pvpApi, "request").mockResolvedValue({});
     registerClearedRun(data, username);
     await vi.waitFor(() => expect(request).toHaveBeenCalledWith("register", expect.objectContaining({ runId: "auto-clear" }), data.gameVersion));
+    expect(request).toHaveBeenCalledWith("clear-candidate", { runId: "auto-clear", candidate: expect.objectContaining({ seed: data.seed, waveIndex: 200, battleType: BattleType.CLEAR }) }, data.gameVersion);
     await vi.waitFor(() => expect(read(key).autoRegistrationSource).toBeUndefined());
   });
   it("retries a completed clear after an offline failure", async () => {
@@ -131,6 +132,171 @@ describe("Ranked journal async account isolation", () => {
     barrier.resolve({});
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(request.mock.calls.some(([path]) => path === "register")).toBe(false);
+  });
+  it("persists the clear before a failed candidate request and retries it", async () => {
+    const { key, data } = completedJournal("candidate-retry", "candidate-retry-seed");
+    let offline = true;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const request = vi.spyOn(pvpApi, "request").mockImplementation(async path => {
+      if (path === "clear-candidate" && offline) throw new Error("server unavailable");
+      return {};
+    });
+    registerClearedRun(data, username);
+    expect(read(key).clearCandidate).toMatchObject({ seed: data.seed, waveIndex: 200, battleType: BattleType.CLEAR });
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("clear-candidate", expect.anything(), data.gameVersion));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(read(key).autoRegistrationSource).toBe(data.gameVersion);
+    expect(request.mock.calls.some(([path]) => path === "register")).toBe(false);
+    offline = false;
+    retryPendingRegistrations();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("register", expect.objectContaining({ runId: "candidate-retry" }), data.gameVersion));
+    await vi.waitFor(() => expect(read(key).clearCandidate).toBeUndefined());
+  });
+  it("does not register after a candidate request completes for a different account", async () => {
+    const { key, data } = completedJournal("candidate-account", "candidate-account-seed");
+    const barrier = deferred<unknown>();
+    const request = vi.spyOn(pvpApi, "request").mockImplementation(async path => path === "clear-candidate" ? barrier.promise : {});
+    registerClearedRun(data, username);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("clear-candidate", expect.anything(), data.gameVersion));
+    username = "journal-bob";
+    barrier.resolve({});
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(request.mock.calls.some(([path]) => path === "register")).toBe(false);
+    expect(read(key).autoRegistrationSource).toBe(data.gameVersion);
+  });
+  it("restores the pending clear from storage after the in-memory run is discarded", async () => {
+    const { key, data } = completedJournal("candidate-reload", "candidate-reload-seed");
+    let offline = true;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const request = vi.spyOn(pvpApi, "request").mockImplementation(async path => {
+      if (offline) throw new Error("offline");
+      return {};
+    });
+    registerClearedRun(data, username);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const feature = vi.spyOn(state, "pvpEnabled", "get").mockReturnValue(false);
+    await prepareRankedRun([]); // Discard the module's current run, like a fresh page.
+    feature.mockReturnValue(true);
+    offline = false;
+    retryPendingRegistrations();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("clear-candidate", expect.objectContaining({ runId: "candidate-reload" }), data.gameVersion));
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("register", expect.objectContaining({ runId: "candidate-reload" }), data.gameVersion));
+    await vi.waitFor(() => expect(read(key).autoRegistrationSource).toBeUndefined());
+  });
+  it("retains a completed clear when a pre-battle save is loaded before registration", async () => {
+    const { key, data } = completedJournal("candidate-rewind", "candidate-rewind-seed");
+    game.scene.setSeed(data.seed);
+    const before = read(key).logs;
+    const battleSave = { ...data, battleType: BattleType.WILD as typeof data.battleType };
+    let offline = true;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const request = vi.spyOn(pvpApi, "request").mockImplementation(async () => {
+      if (offline) throw new Error("offline");
+      return {};
+    });
+    registerClearedRun(data, username);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const feature = vi.spyOn(state, "pvpEnabled", "get").mockReturnValue(false);
+    await prepareRankedRun([]);
+    feature.mockReturnValue(true);
+    installJournalLoadHooks();
+    vi.spyOn(game.scene.gameData, "getSession").mockResolvedValue(battleSave);
+    expect(await game.scene.gameData.loadSession(0)).toBe(true);
+    expect(read(key).ineligible).toBeTruthy();
+    expect(read(key).logs).toEqual(before);
+    expect(read(key).clearCandidate).toMatchObject({ waveIndex: 200, battleType: BattleType.CLEAR });
+    offline = false;
+    retryPendingRegistrations();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("register", expect.objectContaining({ runId: "candidate-rewind" }), data.gameVersion));
+    await vi.waitFor(() => expect(read(key).autoRegistrationSource).toBeUndefined());
+  });
+  it("does not send a candidate when its durable journal cannot be written", () => {
+    const { data } = completedJournal("candidate-quota", "candidate-quota-seed");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("quota"); });
+    const request = vi.spyOn(pvpApi, "request").mockResolvedValue({});
+    expect(() => registerClearedRun(data, username)).not.toThrow();
+    expect(request).not.toHaveBeenCalled();
+  });
+  it("does not overwrite a pending final frame when campaign reload overlaps compression", async () => {
+    const { key, data } = completedJournal("candidate-concurrent", "candidate-concurrent-seed");
+    const incomplete = read(key);
+    incomplete.logs.pop();
+    incomplete.anchored = 199;
+    incomplete.frame = { wave: 200, party: [], enemyParty: [], money: 0, items: [], shops: [], captures: [] };
+    localStorage.setItem(key, JSON.stringify(incomplete));
+    game.scene.setSeed(data.seed);
+    const barrier = deferred<void>();
+    let compressing = false;
+    const ResponseClass = Response;
+    vi.stubGlobal("Response", class extends ResponseClass {
+      override async arrayBuffer() {
+        compressing = true;
+        await barrier.promise;
+        return super.arrayBuffer();
+      }
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    let offline = true;
+    const request = vi.spyOn(pvpApi, "request").mockImplementation(async () => {
+      if (offline) throw new Error("offline");
+      return {};
+    });
+    registerClearedRun(data, username);
+    await vi.waitUntil(() => compressing);
+    const feature = vi.spyOn(state, "pvpEnabled", "get").mockReturnValue(false);
+    await prepareRankedRun([]);
+    feature.mockReturnValue(true);
+    installJournalLoadHooks();
+    vi.spyOn(game.scene.gameData, "getSession").mockResolvedValue({ ...data, battleType: BattleType.WILD as typeof data.battleType });
+    const loading = game.scene.gameData.loadSession(0);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    barrier.resolve();
+    expect(await loading).toBe(true);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(read(key).logs).toHaveLength(200);
+    expect(read(key).frame).toBeUndefined();
+    expect(read(key).ineligible).toBeTruthy();
+    offline = false;
+    retryPendingRegistrations();
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("register", expect.objectContaining({ runId: "candidate-concurrent" }), data.gameVersion));
+    await vi.waitFor(() => expect(read(key).autoRegistrationSource).toBeUndefined());
+  });
+  it("shares the pending journal when campaign restore starts before registration", async () => {
+    const { key, data } = completedJournal("restore-first", "restore-first-seed");
+    const incomplete = read(key);
+    incomplete.logs.pop();
+    incomplete.anchored = 199;
+    incomplete.frame = { wave: 200, party: [], enemyParty: [], money: 0, items: [], shops: [], captures: [] };
+    incomplete.clearCandidate = data;
+    incomplete.autoRegistrationSource = data.gameVersion;
+    localStorage.setItem(key, JSON.stringify(incomplete));
+    game.scene.setSeed(data.seed);
+    const feature = vi.spyOn(state, "pvpEnabled", "get").mockReturnValue(false);
+    await prepareRankedRun([]);
+    feature.mockReturnValue(true);
+    installJournalLoadHooks();
+    vi.spyOn(game.scene.gameData, "getSession").mockResolvedValue({ ...data, battleType: BattleType.WILD as typeof data.battleType });
+    const getData = game.scene.gameData.getSessionSaveData.bind(game.scene.gameData);
+    let scheduled = false;
+    vi.spyOn(game.scene.gameData, "getSessionSaveData").mockImplementation(() => {
+      const result = getData();
+      if (!scheduled) {
+        scheduled = true;
+        // This runs after restoreJournal acquires the run and reaches its first await.
+        queueMicrotask(retryPendingRegistrations);
+      }
+      return result;
+    });
+    const request = vi.spyOn(pvpApi, "request").mockResolvedValue({});
+    expect(await game.scene.gameData.loadSession(0)).toBe(true);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith("register", expect.objectContaining({ runId: "restore-first" }), data.gameVersion));
+    await vi.waitFor(() => expect(read(key).autoRegistrationSource).toBeUndefined());
+    expect(read(key).logs).toHaveLength(200);
+    expect(read(key).frame).toBeUndefined();
+    expect(read(key).ineligible).toBeTruthy();
   });
   const contract = {
     auditPolicy: auditPolicy.policy,

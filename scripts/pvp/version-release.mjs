@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertNativeSyncSafety } from "./native-sync-guard.mjs";
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
   workspace = existsSync(resolve(repo, "deployment/pvp-release.json")) ? resolve(repo, "deployment") : resolve(repo, "..");
 const config = JSON.parse(readFileSync(resolve(workspace, "pvp-release.json")));
@@ -52,6 +53,14 @@ function check() {
   docker(["config", "--quiet"]);
 }
 function sync() {
+  // Check every target before writing anything: a later profile may contain
+  // version-specific recovery that a root-to-native copy would erase.
+  for (const [version, p] of Object.entries(config.profiles)) {
+    const dir = resolve(workspace, p.directory);
+    if (dir === repo) continue;
+    assert.ok(dir.startsWith(workspace + "\\") || dir.startsWith(workspace + "/"));
+    assertNativeSyncSafety(version, readFileSync(join(dir, "src/pvp/log.ts"), "utf8"));
+  }
   for (const [version, p] of Object.entries(config.profiles)) {
     const dir = resolve(workspace, p.directory);
     if (dir === repo) continue;

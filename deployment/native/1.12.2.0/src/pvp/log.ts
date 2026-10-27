@@ -54,6 +54,7 @@ interface LocalRun {
   inventory?: InventoryData[] | undefined;
   ineligible?: string | undefined;
   autoRegistrationSource?: string | undefined;
+  clearCandidate?: SessionSaveData | undefined;
 }
 const prefix = () => `pvp:run:${loggedInUser?.username}:`;
 const hash = (text: string) => CryptoJS.SHA256(text).toString();
@@ -72,6 +73,22 @@ const summary = (p: PokemonData) => ({
 });
 let current: LocalRun | undefined;
 let owner = "";
+// A retry and a campaign load can overlap after a page reload. Share the same
+// run object so the loader cannot overwrite an in-flight final frame.
+const recoveringRuns = new Map<string, { run: LocalRun; users: number }>();
+function acquireRecoveringRun(key: string, run: LocalRun): LocalRun {
+  const entry = recoveringRuns.get(key);
+  if (entry) {
+    entry.users++;
+    return entry.run;
+  }
+  recoveringRuns.set(key, { run, users: 1 });
+  return run;
+}
+function releaseRecoveringRun(key: string, run: LocalRun): void {
+  const entry = recoveringRuns.get(key);
+  if (entry?.run === run && --entry.users === 0) recoveringRuns.delete(key);
+}
 let pendingGeneration: GenerationCheckpoint | undefined;
 const capturedScenes = new WeakSet<typeof globalScene>();
 let loadInstalled = false;
@@ -182,10 +199,12 @@ export function installJournalLoadHooks(): void {
   };
 }
 async function restoreJournal(data: SessionSaveData, account: string): Promise<void> {
-  const run = findRun(data.seed);
-  if (!run) {
+  const found = findRun(data.seed);
+  if (!found) {
     return;
   }
+  const key = account + found.id;
+  const run = acquireRecoveringRun(key, found);
   const sameContext = () =>
     prefix() === account
     && globalScene.seed === data.seed
@@ -198,6 +217,13 @@ async function restoreJournal(data: SessionSaveData, account: string): Promise<v
   try {
     await finalizing.get(run);
     if (!sameContext()) {
+      return;
+    }
+    if (run.clearCandidate && run.autoRegistrationSource) {
+      // Loading the pre-battle save must not rewind a finished run's evidence.
+      // The restored campaign cannot keep journaling this run, but the already
+      // completed candidate remains eligible for its pending registration.
+      reject(pvpT("rejectLoadedPriorWave"));
       return;
     }
     let frame = run.frame;
@@ -248,19 +274,23 @@ async function restoreJournal(data: SessionSaveData, account: string): Promise<v
     if (sameContext()) {
       reject(pvpT("rejectLocalLogRestoreFailed", { error: String(error) }));
     }
+  } finally {
+    releaseRecoveringRun(key, run);
   }
 }
 const unavailableSeeds = new Set<string>();
 const finalizing = new WeakMap<LocalRun, Promise<void>>();
-function persistRun(run: LocalRun, account: string): void {
+function persistRun(run: LocalRun, account: string): boolean {
   try {
     localStorage.setItem(account + run.id, JSON.stringify(run));
+    return true;
   } catch (err) {
     unavailableSeeds.add(account + run.seed);
     if (current === run) {
       current = undefined;
     }
     console.warn("Failed to persist streak battle local logs; cannot register this run:", err);
+    return false;
   }
 }
 const persist = () => {
@@ -322,7 +352,7 @@ function findRun(seed: string): LocalRun | undefined {
   }
   for (const key of Object.keys(localStorage).filter(k => k.startsWith(prefix()))) {
     try {
-      const r = JSON.parse(localStorage.getItem(key)!) as LocalRun;
+      const r = recoveringRuns.get(key)?.run ?? JSON.parse(localStorage.getItem(key)!) as LocalRun;
       if (r.seed === seed && !r.ineligible) {
         owner = prefix();
         return r;
@@ -547,8 +577,12 @@ export function registerClearedRun(data: SessionSaveData, account: string | unde
     || data.waveIndex !== 200 || !Object.is(data.battleType, BattleType.CLEAR)) return;
   const run = findRun(data.seed);
   if (!run || owner !== prefix()) return;
+  // Keep the same object used by frame finalization, so simultaneous clear and
+  // registration attempts cannot overwrite one another's journal updates.
+  current = run;
   run.autoRegistrationSource = data.gameVersion;
-  persistRun(run, owner);
+  run.clearCandidate = serialCopy(data);
+  if (!persistRun(run, owner)) return;
   void retryRegistration(run.id, data.gameVersion);
 }
 
@@ -574,12 +608,15 @@ function retryRegistration(id: string, source: string): Promise<boolean> {
   const account = prefix(), key = account + id;
   const existing = registering.get(key);
   if (existing) return existing;
+  let retryingRun: LocalRun | undefined;
   const promise = (async () => {
     try {
       const raw = localStorage.getItem(key);
       if (!raw || prefix() !== account) return false;
-      const run = JSON.parse(raw) as LocalRun;
-      if (run.ineligible || run.autoRegistrationSource !== source) return false;
+      const found = current?.id === id && owner === account ? current : JSON.parse(raw) as LocalRun;
+      const run = acquireRecoveringRun(key, found);
+      retryingRun = run;
+      if ((run.ineligible && !run.clearCandidate) || run.autoRegistrationSource !== source) return false;
       if (run.frame?.wave === 200) await finalizeFrame(run, account);
       if (prefix() !== account || run.logs.length !== 200 || run.logs.at(-1)?.wave !== 200) return false;
       if (run.anchored < 200) {
@@ -590,20 +627,29 @@ function retryRegistration(id: string, source: string): Promise<boolean> {
       const status = await pvpApi.request<{ audit?: { status: string; runId?: string }; streakAttempt?: { runId: string } }>("status", undefined, source);
       if (prefix() !== account) return false;
       if (status.audit?.runId === id || status.streakAttempt?.runId === id) {
+        if (status.audit?.runId === id && status.audit.status === "rejected") return false;
         run.autoRegistrationSource = undefined;
+        run.clearCandidate = undefined;
         persistRun(run, account);
         return true;
       }
       if (status.audit?.status === "pending") return false;
+      if (run.clearCandidate) {
+        await pvpApi.request("clear-candidate", { runId: id, candidate: run.clearCandidate }, source);
+        if (prefix() !== account) return false;
+      }
       await pvpApi.request("register", { runId: id, logs: run.logs }, source);
       if (prefix() === account) {
         run.autoRegistrationSource = undefined;
+        run.clearCandidate = undefined;
         persistRun(run, account);
       }
       return true;
     } catch (error) {
       console.warn("Retrying cleared party auto-registration:", error);
       return false;
+    } finally {
+      if (retryingRun) releaseRecoveringRun(key, retryingRun);
     }
   })();
   registering.set(key, promise);
