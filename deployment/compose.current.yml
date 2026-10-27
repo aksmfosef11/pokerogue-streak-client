@@ -1,0 +1,80 @@
+name: pokerogue-streak
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${PVP_DB_ROOT_PASSWORD:?Set PVP_DB_ROOT_PASSWORD in .env}
+      MARIADB_DATABASE: pokeroguedb
+      MARIADB_USER: pokerogue
+      MARIADB_PASSWORD: ${PVP_DB_PASSWORD:?Set PVP_DB_PASSWORD in .env}
+    volumes:
+      - database:/var/lib/mysql
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  server:
+    build:
+      context: ../../server
+      args:
+        BUILD_TAGS: devsetup,beta
+    restart: unless-stopped
+    environment:
+      dbaddr: db:3306
+      dbuser: pokerogue
+      dbpass: ${PVP_DB_PASSWORD:?Set PVP_DB_PASSWORD in .env}
+      dbname: pokeroguedb
+      gameurl: ${PVP_PUBLIC_URL:?Set PVP_PUBLIC_URL in .env}
+      callbackurl: ${PVP_PUBLIC_URL:?Set PVP_PUBLIC_URL in .env}/api
+      PVP_ALLOW_PRACTICE: "false"
+      PVP_DATA_DIR: /data
+      PVP_AUDIT_URL: http://audit-1-12-2-0:8002
+      PVP_AUDIT_WORKERS: "1"
+      PVP_VERSION_REGISTRY: pvp/versions.json
+    volumes:
+      - pvp-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+  audit-1-12-2-0:
+    build:
+      context: ./native/1.12.2.0
+      dockerfile: Dockerfile.audit
+    restart: unless-stopped
+    environment:
+      PVP_AUDIT_WORKERS: "1"
+      PVP_AUDIT_KEY_FILE: /data/pvp.key
+    volumes:
+      - pvp-data:/data:ro
+    depends_on:
+      - server
+    mem_limit: 3g
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:8002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  game-1-12-2-0:
+    build:
+      context: ./native/1.12.2.0
+      dockerfile: Dockerfile.pvp
+      additional_contexts:
+        auditold: service:audit-1-12-2-0
+    restart: unless-stopped
+    depends_on:
+      - server
+  game:
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ./pvp.current.gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - server
+      - game-1-12-2-0
+    ports:
+      - "127.0.0.1:${PVP_LOCAL_PORT:-8000}:80"
+volumes:
+  database:
+  pvp-data:

@@ -28,8 +28,9 @@ const run = (tool, args, options = {}) =>
     maxBuffer: 64 * 1024 * 1024,
     ...options,
   });
+const composeFile = existsSync(resolve(workspace, "compose.current.yml")) ? "compose.current.yml" : "compose.pvp.yml";
 const docker = (args, options = {}) =>
-  run("docker", ["compose", "-f", resolve(workspace, "compose.pvp.yml"), ...args], options);
+  run("docker", ["compose", "-f", resolve(workspace, composeFile), ...args], options);
 const git = args => run("git", args, { cwd: repo });
 const sha = data => createHash("sha256").update(data).digest("hex");
 function check() {
@@ -137,7 +138,7 @@ function backup() {
   const id = docker(["ps", "-q", "server"]).trim();
   run("docker", ["cp", `${id}:/data/pvp.key`, join(out, "pvp.key")]);
   run("docker", ["cp", `${id}:/app/rogueserver`, join(out, "rogueserver")]);
-  for (const file of ["compose.pvp.yml", "pvp-release.json", "pvp.gateway.conf"])
+  for (const file of [composeFile, "pvp-release.json", composeFile === "compose.current.yml" ? "pvp.current.gateway.conf" : "pvp.gateway.conf"])
     cpSync(resolve(workspace, file), join(out, file));
   run("docker", ["cp", `${id}:/app/pvp/versions.json`, join(out, "versions.json")]);
   writeFileSync(join(out, "containers.json"), docker(["ps", "--format", "json"]));
