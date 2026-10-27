@@ -2,27 +2,31 @@ name: PvP compatibility
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
+concurrency:
+  group: pvp-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   compatibility:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
-          fetch-depth: 0
+          submodules: false
+          fetch-depth: 1
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - run: corepack enable
       - name: Pinned upstream dependencies
         run: |
+          git submodule update --init --depth=1 -- assets locales
           test "$(git -C assets rev-parse HEAD)" = 64b3f47cd586589261fe8cb08c8d540d710bfc1c
           test "$(git -C locales rev-parse HEAD)" = 5cd9ba827721461a5a68edc55cc00b8b8aabd61d
       - run: pnpm install --frozen-lockfile
       - name: Establish the pinned upstream comparison
         run: |
           PVP_UPSTREAM_TAG="v$(node -p 'require("./package.json").version')"
-          git fetch https://github.com/pagefaultgames/pokerogue.git "refs/tags/$PVP_UPSTREAM_TAG:refs/tags/$PVP_UPSTREAM_TAG"
+          git fetch --depth=1 --no-tags https://github.com/pagefaultgames/pokerogue.git "refs/tags/$PVP_UPSTREAM_TAG:refs/tags/$PVP_UPSTREAM_TAG"
           git branch --force vendor "$PVP_UPSTREAM_TAG"
       - run: pnpm typecheck
       - name: Audit harness types
