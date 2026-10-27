@@ -89,5 +89,8 @@ try {
 } catch (err) {
   console.error("Error loading fonts:", err);
 } finally {
+  if (document.getElementById("startup-disclaimer")) {
+    await new Promise<void>(resolve => document.addEventListener("pvp-disclaimer-closed", () => resolve(), { once: true }));
+  }
   await startGame();
 }

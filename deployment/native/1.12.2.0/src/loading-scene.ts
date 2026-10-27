@@ -2,7 +2,6 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { SceneBase } from "#app/scene-base";
-import { isMobile } from "#app/touch-controls";
 import { BiomeId } from "#enums/biome-id";
 import { GachaType } from "#enums/gacha-types";
 import { getBiomeHasProps } from "#field/arena";
@@ -374,8 +373,6 @@ export class LoadingScene extends SceneBase {
   }
 
   private loadLoadingScreen() {
-    const mobile = isMobile();
-
     const bg = this.add //
       .image(0, 0, "")
       .setOrigin(0)
@@ -429,31 +426,6 @@ export class LoadingScene extends SceneBase {
       })
       .setOrigin(0.5, 0.5);
 
-    const disclaimerText = this.make
-      .text({
-        x: midWidth,
-        y: assetText.y + 152,
-        text: i18next.t("menu:disclaimer"),
-        style: {
-          font: "72px emerald",
-          color: "#DA3838",
-        },
-      })
-      .setOrigin(0.5, 0.5);
-
-    const disclaimerDescriptionText = this.make
-      .text({
-        x: midWidth,
-        y: disclaimerText.y + 120,
-        text: i18next.t("menu:disclaimerDescription"),
-        style: {
-          font: "48px emerald",
-          color: "#ffffff",
-          align: "center",
-        },
-      })
-      .setOrigin(0.5, 0.5);
-
     const loadingGraphics: (GameObjects.Image | GameObjects.Graphics | GameObjects.Text)[] = [];
     loadingGraphics.push(
       bg,
@@ -463,43 +435,9 @@ export class LoadingScene extends SceneBase {
       logo,
       percentText,
       assetText,
-      disclaimerText,
-      disclaimerDescriptionText,
     );
 
-    if (!mobile) {
-      loadingGraphics.forEach(g => {
-        g.setVisible(false);
-      });
-    }
-
-    const intro = this.add
-      .video(0, 0)
-      .setOrigin(0)
-      .setScale(3)
-      .once(Phaser.GameObjects.Events.VIDEO_COMPLETE, (video: Phaser.GameObjects.Video) => {
-        this.tweens.add({
-          targets: intro,
-          duration: 500,
-          alpha: 0,
-          ease: "Sine.easeIn",
-          onComplete: () => video.destroy(),
-        });
-        for (const g of loadingGraphics) {
-          g.setVisible(true);
-        }
-      });
-
     this.load
-      .once(this.LOAD_EVENTS.START, () => {
-        // videos do not need to be preloaded
-        intro.loadURL("images/intro_dark.mp4", true);
-        if (mobile) {
-          intro.video?.setAttribute("webkit-playsinline", "webkit-playsinline");
-          intro.video?.setAttribute("playsinline", "playsinline");
-        }
-        intro.play();
-      })
       .on(this.LOAD_EVENTS.PROGRESS, (progress: number) => {
         percentText.setText(`${Math.floor(progress * 100)}%`);
         // need to reset fill style due to `clear` restting it
@@ -513,15 +451,11 @@ export class LoadingScene extends SceneBase {
         switch (key) {
           case "loading_bg":
             bg.setTexture("loading_bg");
-            if (mobile) {
-              bg.setVisible(true);
-            }
+            bg.setVisible(true);
             break;
           case "logo":
             logo.setTexture("logo");
-            if (mobile) {
-              logo.setVisible(true);
-            }
+            logo.setVisible(true);
             break;
         }
       })
@@ -529,7 +463,6 @@ export class LoadingScene extends SceneBase {
         for (const g of loadingGraphics) {
           g.destroy();
         }
-        intro.destroy();
       });
   }
 

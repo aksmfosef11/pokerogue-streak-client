@@ -98,8 +98,8 @@ function nativeSource() {
     git(["archive", "--format=tar", "--output", archive, `v${version}`, "src"]);
     run("tar", ["-xf", archive, "-C", pristine]);
     unlinkSync(archive);
-    // UI customizations disable external accounts and save-file imports.
-    const customizedFiles = ["src/data/splash-messages.ts", "src/ui/handlers/menu-ui-handler.ts", "src/ui/handlers/login-form-ui-handler.ts", "src/ui/handlers/admin-ui-handler.ts"];
+    // UI customizations disable external accounts and imports and change startup.
+    const customizedFiles = ["src/data/splash-messages.ts", "src/loading-scene.ts", "src/main.ts", "src/ui/handlers/menu-ui-handler.ts", "src/ui/handlers/login-form-ui-handler.ts", "src/ui/handlers/admin-ui-handler.ts"];
     const expected = walk(pristine).filter(f => !seams.includes(f) && !customizedFiles.includes(f)),
       actual = walk(resolve(workspace, p.directory)).filter(f => !seams.includes(f) && !customizedFiles.includes(f) && !f.startsWith("src/pvp/"));
     assert.deepEqual(actual.sort(), expected.sort(), `${version}: native file set changed`);

@@ -69,10 +69,15 @@ for (const root of [".", "deployment/native/1.12.1.2", "deployment/native/1.12.2
   assert.ok(!menu.includes("/auth/google/") && !menu.includes("/auth/discord/"), `${root}: account linking returned`);
   assert.ok(!login.includes("processExternalProvider("), `${root}: external login returned`);
   assert.ok(menu.includes("tryExportData("), `${root}: save export was removed`);
+  const html = read("index.html");
+  assert.ok(html.includes('id="startup-disclaimer"') && !html.includes('id="disclaimer-footer"'), `${root}: startup notice layout changed`);
+  assert.ok(!read("src/loading-scene.ts").includes("intro_dark.mp4"), `${root}: intro video returned`);
 }
-// These UI files intentionally remove unavailable sign-in/linking features.
+// These files intentionally customize branding, startup and account features.
 const customizedFiles = [
   "src/data/splash-messages.ts",
+  "src/loading-scene.ts",
+  "src/main.ts",
   "src/ui/handlers/menu-ui-handler.ts",
   "src/ui/handlers/login-form-ui-handler.ts",
   "src/ui/handlers/admin-ui-handler.ts",

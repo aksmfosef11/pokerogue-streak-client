@@ -40,6 +40,24 @@ SPDX-License-Identifier: AGPL-3.0-only
 			font-family: 'pkmnems';
 			src: url('./fonts/pkmnems.ttf') format('truetype');
 		}
+
+    /* Shown before the game starts and removed when dismissed. */
+    html.notice-open, html.notice-open body { touch-action: pan-y; }
+    #startup-disclaimer {
+      position: fixed; inset: 0; z-index: 999999; box-sizing: border-box;
+      display: flex; flex-direction: column; align-items: center; justify-content: safe center;
+      overflow-y: auto; padding: 24px; background: #17141e; color: #f8f6fa;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      text-align: center; touch-action: pan-y;
+    }
+    #startup-disclaimer .notice-content { max-width: 780px; margin: auto; }
+    #startup-disclaimer h1 { margin: 0 0 18px; font-size: clamp(27px, 5vw, 42px); }
+    #startup-disclaimer p { margin: 0 0 18px; font-size: clamp(15px, 2vw, 19px); line-height: 1.6; }
+    #startup-disclaimer button {
+      min-width: 160px; padding: 12px 24px; border: 0; border-radius: 8px;
+      background: #da3838; color: white; cursor: pointer; font: inherit; font-weight: 700;
+    }
+    #startup-disclaimer button:focus-visible { outline: 3px solid white; outline-offset: 4px; }
 	</style>
 	<link rel="stylesheet" type="text/css" href="./index.css" />
 	<link rel="manifest" href="./manifest.webmanifest">
@@ -148,6 +166,37 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 		</div>
 	</div>
+	<section id="startup-disclaimer" role="dialog" aria-modal="true" aria-labelledby="startup-disclaimer-title">
+      <div class="notice-content">
+        <h1 id="startup-disclaimer-title">안내 / Notice</h1>
+		<p>
+			<strong>PokéRogue PvP</strong> is a non-commercial, fan-made project. Pokémon and all related characters, trademarks, and assets are © and ™ Nintendo, Creatures Inc., Game Freak Inc., and The Pokémon Company. This project is not affiliated with or endorsed by Nintendo or Pokémon, and does not accept any ads, donations, or commercial monetization.
+		</p>
+		<p>
+			<strong>PokéRogue PvP</strong>는 비영리 팬메이드 프로젝트입니다. Pokémon 및 관련 모든 캐릭터·상표·에셋의 저작권과 상표권은 Nintendo, Creatures Inc., Game Freak Inc., The Pokémon Company에 귀속됩니다. 본 프로젝트는 상업적 목적(광고/후원/과금)을 일절 갖지 않으며 공식 제품과 무관합니다.
+		</p>
+        <button id="startup-disclaimer-continue" type="button">게임 시작 / Continue</button>
+      </div>
+    </section>
+
+  <script>
+    (function () {
+      var notice = document.getElementById("startup-disclaimer");
+      var key = "pokerogue-pvp-notice-seen";
+      try { if (sessionStorage.getItem(key) === "1") { notice.remove(); return; } } catch (_) {}
+      document.documentElement.classList.add("notice-open");
+      function closeNotice() {
+        if (!notice.isConnected) return;
+        try { sessionStorage.setItem(key, "1"); } catch (_) {}
+        notice.remove();
+        document.documentElement.classList.remove("notice-open");
+        document.dispatchEvent(new Event("pvp-disclaimer-closed"));
+      }
+      document.getElementById("startup-disclaimer-continue").addEventListener("click", closeNotice);
+      window.setTimeout(closeNotice, 8000);
+    })();
+  </script>
+
 	<script type="module" src="./src/main.ts"></script>
 </body>
 </html>
