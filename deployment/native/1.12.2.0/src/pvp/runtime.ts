@@ -5,7 +5,8 @@ import type { Command } from "#enums/command";
 import { GameModes } from "#enums/game-modes";
 import type { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";
-import { EnemyPokemon } from "#field/pokemon";
+import { EntryHazardTag } from "#data/arena-tag";
+import { EnemyPokemon, Pokemon } from "#field/pokemon";
 import { BattleEndPhase } from "#phases/battle-end-phase";
 import { CommandPhase } from "#phases/command-phase";
 import { EnemyCommandPhase } from "#phases/enemy-command-phase";
@@ -16,6 +17,7 @@ import { VictoryPhase } from "#phases/victory-phase";
 import { loggedInUser } from "#app/account";
 import { logBattleEnd, logDreamTransformations, logEncounterChoice, registerClearedRun } from "./log";
 import { isPvpMatchActive, pvpEnabled } from "./state";
+import { adjustBattleTowerMatchupScore, getBattleTowerSwitchThreshold } from "./ai";
 import { chooseTrainerTera, trainerPersonality, withTrainerMoveWeights } from "./trainer-ai";
 
 interface BattleHooks {
@@ -105,6 +107,29 @@ export function installBattleHooks(handlers: BattleHooks): () => void {
       },
   );
   patch(
+    Pokemon.prototype,
+    "getMatchupScore",
+    original =>
+      function (this: Pokemon, opponent: Pokemon) {
+        const baseScore = original.call(this, opponent);
+        if (!isPvpMatchActive()) {
+          return baseScore;
+        }
+        return adjustBattleTowerMatchupScore(this, opponent, baseScore);
+      },
+  );
+  patch(
+    EntryHazardTag.prototype,
+    "getMatchupScoreMultiplier",
+    original =>
+      function (this: EntryHazardTag, pokemon: Pokemon) {
+        if (isPvpMatchActive()) {
+          return 1;
+        }
+        return original.call(this, pokemon);
+      },
+  );
+  patch(
     EnemyCommandPhase.prototype,
     "start",
     original =>
@@ -119,9 +144,15 @@ export function installBattleHooks(handlers: BattleHooks): () => void {
         }
         const scores = trainer.getPartyMemberMatchupScores;
         const shouldTera = trainer.shouldTera;
+        const enemyPokemon = globalScene.getEnemyField()[this.getFieldIndex()];
+        const opponent = globalScene.getPlayerPokemon();
+        const smartThreshold = enemyPokemon && opponent
+          ? getBattleTowerSwitchThreshold(enemyPokemon, opponent, trainer.config.isBoss)
+          : profile.switchThreshold;
+        const effectiveThreshold = Math.min(profile.switchThreshold, smartThreshold);
         trainer.getPartyMemberMatchupScores = function (slot, forSwitch) {
           const result = scores.call(this, slot, forSwitch);
-          return forSwitch ? result.map(([index, score]) => [index, (score * 3) / profile.switchThreshold]) : result;
+          return forSwitch ? result.map(([index, score]) => [index, (score * 3) / effectiveThreshold]) : result;
         };
         trainer.shouldTera = pokemon =>
           !Reflect.get(this, "skipTurn")

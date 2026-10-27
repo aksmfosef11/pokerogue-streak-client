@@ -10,6 +10,9 @@ import { GameOverPhase } from "#phases/game-over-phase";
 import { MysteryEncounterOptionSelectedPhase, MysteryEncounterPhase } from "#phases/mystery-encounter-phases";
 import { SwitchPhase } from "#phases/switch-phase";
 import { VictoryPhase } from "#phases/victory-phase";
+import { EntryHazardTag } from "#data/arena-tag";
+import { Pokemon } from "#field/pokemon";
+import { adjustBattleTowerMatchupScore, executeBattleTowerEnemyCommand } from "./ai";
 import { logBattleEnd, logDreamTransformations, logEncounterChoice } from "./log";
 import { isPvpMatchActive } from "./state";
 
@@ -100,11 +103,37 @@ export function installBattleHooks(handlers: BattleHooks): () => void {
       },
   );
   patch(
+    Pokemon.prototype,
+    "getMatchupScore",
+    original =>
+      function (this: Pokemon, opponent: Pokemon) {
+        const baseScore = original.call(this, opponent);
+        if (!isPvpMatchActive()) {
+          return baseScore;
+        }
+        return adjustBattleTowerMatchupScore(this, opponent, baseScore);
+      },
+  );
+  patch(
+    EntryHazardTag.prototype,
+    "getMatchupScoreMultiplier",
+    original =>
+      function (this: EntryHazardTag, pokemon: Pokemon) {
+        if (isPvpMatchActive()) {
+          return 1;
+        }
+        return original.call(this, pokemon);
+      },
+  );
+  patch(
     EnemyCommandPhase.prototype,
     "start",
     original =>
       function (this: EnemyCommandPhase) {
         if (isPvpMatchActive() && handlers.pausePvpTurn(this)) {
+          return;
+        }
+        if (isPvpMatchActive() && executeBattleTowerEnemyCommand(this)) {
           return;
         }
         return original.call(this);
