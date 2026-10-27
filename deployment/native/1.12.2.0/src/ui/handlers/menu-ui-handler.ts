@@ -3,7 +3,7 @@ import { loggedInUser, updateUserInfo } from "#app/account";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { handleTutorial, Tutorial } from "#app/tutorial";
-import { bypassLogin, isApp, isBeta, isDev } from "#constants/app-constants";
+import { bypassLogin, isBeta, isDev } from "#constants/app-constants";
 import { AdminMode, getAdminModeName } from "#enums/admin-mode";
 import { Button } from "#enums/buttons";
 import { GameDataType } from "#enums/game-data-type";
@@ -15,8 +15,7 @@ import { BgmBar } from "#ui/bgm-bar";
 import { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
 import { addTextObject } from "#ui/text";
 import { addWindow, WindowVariant } from "#ui/ui-theme";
-import { fixedInt, sessionIdKey } from "#utils/common";
-import { getCookie } from "#utils/cookies";
+import { fixedInt } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
 import { toCamelCase } from "#utils/strings";
 import i18next from "i18next";
@@ -258,20 +257,6 @@ export class MenuUiHandler extends OptionSelectUiHandler {
       });
     };
 
-    if (isBeta || isDev || isApp) {
-      manageDataOptions.push({
-        label: i18next.t("menuUiHandler:importSession"),
-        handler: () => {
-          confirmSlot(
-            i18next.t("menuUiHandler:importSlotSelect"),
-            () => true,
-            slotId => globalScene.gameData.importData(GameDataType.SESSION, slotId, this.optionSelectBg.displayWidth),
-          );
-          return true;
-        },
-        keepOpen: true,
-      });
-    }
     manageDataOptions.push({
       label: i18next.t("menuUiHandler:exportSession"),
       handler: () => {
@@ -297,15 +282,6 @@ export class MenuUiHandler extends OptionSelectUiHandler {
       keepOpen: true,
     });
     manageDataOptions.push({
-      label: i18next.t("menuUiHandler:importRunHistory"),
-      handler: () => {
-        ui.revertMode(); // TODO: is this correct?
-        globalScene.gameData.importData(GameDataType.RUN_HISTORY);
-        return true;
-      },
-      keepOpen: true,
-    });
-    manageDataOptions.push({
       label: i18next.t("menuUiHandler:exportRunHistory"),
       handler: () => {
         globalScene.gameData.tryExportData(GameDataType.RUN_HISTORY);
@@ -313,17 +289,6 @@ export class MenuUiHandler extends OptionSelectUiHandler {
       },
       keepOpen: true,
     });
-    if (isBeta || isDev || isApp) {
-      manageDataOptions.push({
-        label: i18next.t("menuUiHandler:importData"),
-        handler: () => {
-          ui.revertMode();
-          globalScene.gameData.importData(GameDataType.SYSTEM);
-          return true;
-        },
-        keepOpen: true,
-      });
-    }
     manageDataOptions.push({
       label: i18next.t("menuUiHandler:exportData"),
       handler: () => {
@@ -490,7 +455,7 @@ export class MenuUiHandler extends OptionSelectUiHandler {
         label: "Admin",
         handler: () => {
           // this is here so that we can skip the menu populating enums that aren't meant for the menu
-          const skippedAdminModes: AdminMode[] = [AdminMode.ADMIN];
+          const skippedAdminModes: AdminMode[] = [AdminMode.ADMIN, AdminMode.LINK];
           const options: OptionSelectItem[] = [];
           Object.values(AdminMode)
             .filter(v => !skippedAdminModes.includes(v))
@@ -607,73 +572,6 @@ export class MenuUiHandler extends OptionSelectUiHandler {
         success = true;
         break;
       case MenuOptions.MANAGE_DATA:
-        if (
-          !bypassLogin
-          && !this.manageDataConfig.options.some(
-            o =>
-              o.label === i18next.t("menuUiHandler:linkDiscord")
-              || o.label === i18next.t("menuUiHandler:unlinkDiscord"),
-          )
-        ) {
-          this.manageDataConfig.options.splice(
-            this.manageDataConfig.options.length - 1,
-            0,
-            {
-              label:
-                loggedInUser?.discordId === ""
-                  ? i18next.t("menuUiHandler:linkDiscord")
-                  : i18next.t("menuUiHandler:unlinkDiscord"),
-              handler: () => {
-                if (loggedInUser?.discordId === "") {
-                  const token = getCookie(sessionIdKey);
-                  const redirectUri = encodeURIComponent(`${import.meta.env.VITE_SERVER_URL}/auth/discord/callback`);
-                  const discordId = import.meta.env.VITE_DISCORD_CLIENT_ID;
-                  const discordUrl = `https://discord.com/api/oauth2/authorize?client_id=${discordId}&redirect_uri=${redirectUri}&response_type=code&scope=identify&state=${token}&prompt=none`;
-                  window.open(discordUrl, "_self");
-                  return true;
-                }
-                pokerogueApi
-                  .unlinkDiscord()
-                  .then(isSuccess => {
-                    if (!isSuccess) {
-                      console.warn("Error unlinking Discord account!");
-                    }
-                    return updateUserInfo();
-                  })
-                  .then(() => globalScene.reset(true, true));
-
-                return true;
-              },
-            },
-            {
-              label:
-                loggedInUser?.googleId === ""
-                  ? i18next.t("menuUiHandler:linkGoogle")
-                  : i18next.t("menuUiHandler:unlinkGoogle"),
-              handler: () => {
-                if (loggedInUser?.googleId === "") {
-                  const token = getCookie(sessionIdKey);
-                  const redirectUri = encodeURIComponent(`${import.meta.env.VITE_SERVER_URL}/auth/google/callback`);
-                  const googleId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-                  const googleUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${googleId}&response_type=code&redirect_uri=${redirectUri}&scope=openid&state=${token}`;
-                  window.open(googleUrl, "_self");
-                  return true;
-                }
-                pokerogueApi
-                  .unlinkGoogle()
-                  .then(isSuccess => {
-                    if (!isSuccess) {
-                      console.warn("Error unlinking Google account!");
-                    }
-                    return updateUserInfo();
-                  })
-                  .then(() => globalScene.reset(true, true));
-
-                return true;
-              },
-            },
-          );
-        }
         ui.setOverlayMode(UiMode.MENU_OPTION_SELECT, this.manageDataConfig);
         success = true;
         break;

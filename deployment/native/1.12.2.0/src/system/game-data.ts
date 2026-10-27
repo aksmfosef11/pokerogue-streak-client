@@ -8,7 +8,6 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
-import { isIos } from "#app/touch-controls";
 import { Tutorial } from "#app/tutorial";
 import { speciesEggMoves } from "#balance/egg-moves";
 import { bypassLogin, isBeta, isDev, systemSaveShortKeyMap } from "#constants/app-constants";
@@ -68,7 +67,6 @@ import type {
   VoucherUnlocks,
 } from "#types/save-data";
 import type { StarterSpeciesId } from "#types/starter-species-id";
-import type { ConfirmModeConfig } from "#types/ui-types";
 import { RUN_HISTORY_LIMIT } from "#ui/run-history-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
 import { fixedInt, randInt, randSeedItem } from "#utils/common";
@@ -1364,185 +1362,6 @@ export class GameData {
     link.remove();
 
     return true;
-  }
-
-  // TODO: Refactor this spaghetti monster
-  public importData(dataType: GameDataType, slotId = 0, confirmWindowXOffset?: number): void {
-    const dataKey = `${getDataTypeKey(dataType, slotId)}_${loggedInUser?.username}`;
-
-    document.getElementById("saveFile")?.remove();
-
-    const saveFile = document.createElement("input");
-    saveFile.id = "saveFile";
-    saveFile.type = "file";
-    saveFile.accept = isIos() ? ".prsv" : ".prsv, .json, .txt";
-
-    // iOS requires user interaction with a visible element to trigger file input
-    if (isIos()) {
-      const uploadButton = document.createElement("button");
-      uploadButton.id = "iosUploadButton";
-      uploadButton.textContent = "Select File to Import";
-      uploadButton.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        padding: 15px 30px;
-        font-size: 18px;
-        font-family: Arial, sans-serif;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        z-index: 10000;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      `;
-
-      const overlay = document.createElement("div");
-      overlay.id = "iosUploadOverlay";
-      overlay.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0,0,0,0.7);
-        z-index: 9999;
-      `;
-
-      saveFile.style.display = "none";
-
-      uploadButton.onclick = () => {
-        saveFile.click();
-      };
-
-      overlay.onclick = () => {
-        overlay.remove();
-        uploadButton.remove();
-        saveFile.remove();
-      };
-
-      document.body.appendChild(overlay);
-      document.body.appendChild(uploadButton);
-    } else {
-      saveFile.style.display = "none";
-    }
-
-    saveFile.addEventListener("change", ev => {
-      const overlay = document.getElementById("iosUploadOverlay");
-      const button = document.getElementById("iosUploadButton");
-      overlay?.remove();
-      button?.remove();
-
-      const reader = new FileReader();
-
-      reader.onload = (_ => {
-        return e => {
-          let valid = false;
-          const dataName = i18next.t(`gameData:${toCamelCase(GameDataType[dataType])}`);
-          const saveData = e.target?.result?.toString() ?? "";
-
-          let dataStr: string;
-          if (isValidJSON(saveData)) {
-            dataStr = saveData;
-          } else {
-            dataStr = AES.decrypt(saveData, saveKey).toString(enc.Utf8);
-          }
-
-          try {
-            switch (dataType) {
-              case GameDataType.SYSTEM: {
-                dataStr = this.convertSystemDataStr(dataStr);
-                dataStr = dataStr.replace(/"playTime":\d+/, `"playTime":${this.gameStats.playTime + 60}`);
-                const systemData = GameData.parseSystemData(dataStr);
-                valid = !!systemData.dexData && !!systemData.timestamp;
-                break;
-              }
-              case GameDataType.SESSION: {
-                const sessionData = this.parseSessionData(dataStr);
-                valid = !!sessionData.party && !!sessionData.enemyParty && !!sessionData.timestamp;
-                break;
-              }
-              case GameDataType.RUN_HISTORY: {
-                const data = JSON.parse(dataStr);
-                const keys = Object.keys(data);
-                keys.forEach(key => {
-                  const entryKeys = Object.keys(data[key]);
-                  valid =
-                    ["isFavorite", "isVictory", "entry"].every(v => entryKeys.includes(v)) && entryKeys.length === 3;
-                });
-                break;
-              }
-              case GameDataType.SETTINGS:
-              case GameDataType.TUTORIALS:
-                valid = true;
-                break;
-            }
-          } catch (ex) {
-            console.error(ex);
-          }
-
-          const displayError = (error: string) =>
-            globalScene.ui.showText(error, null, () => globalScene.ui.showText("", 0), fixedInt(1500));
-
-          if (!valid) {
-            return displayError(i18next.t("menuUiHandler:importCorrupt", { dataName }));
-          }
-
-          // TODO: move this outside of game data
-          const importDataConfirmOptions: ConfirmModeConfig = {
-            yesHandler: () => {
-              localStorage.setItem(dataKey, encrypt(dataStr, bypassLogin));
-
-              if (!bypassLogin && dataType < GameDataType.SETTINGS) {
-                updateUserInfo().then(success => {
-                  if (!success[0]) {
-                    return displayError(i18next.t("menuUiHandler:importNoServer", { dataName }));
-                  }
-                  const { trainerId, secretId } = this;
-                  let updatePromise: Promise<string | null>;
-                  if (dataType === GameDataType.SESSION) {
-                    updatePromise = pokerogueApi.savedata.session.update(
-                      { slot: slotId, trainerId, secretId, clientSessionId },
-                      dataStr,
-                    );
-                  } else {
-                    updatePromise = pokerogueApi.savedata.system.update(
-                      { trainerId, secretId, clientSessionId },
-                      dataStr,
-                    );
-                  }
-                  updatePromise.then(error => {
-                    if (error) {
-                      console.error(error);
-                      return displayError(i18next.t("menuUiHandler:importError", { dataName }));
-                    }
-                    window.location.reload();
-                  });
-                });
-              } else {
-                window.location.reload();
-              }
-            },
-            noHandler: () => {
-              globalScene.ui.revertMode();
-              globalScene.ui.showText("", 0);
-            },
-            xOffset: confirmWindowXOffset,
-          };
-          globalScene.ui.showText(i18next.t("menuUiHandler:confirmImport", { dataName }), null, () => {
-            globalScene.ui.setOverlayMode(UiMode.CONFIRM, importDataConfirmOptions);
-          });
-        };
-      })((ev.target as any).files[0]);
-
-      reader.readAsText((ev.target as any).files[0]);
-    });
-
-    if (!isIos()) {
-      saveFile.click();
-    }
   }
 
   private initDexData(): void {

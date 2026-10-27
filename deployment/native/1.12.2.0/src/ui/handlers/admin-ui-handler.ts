@@ -20,7 +20,6 @@ export class AdminUiHandler extends FormModalUiHandler {
 
   private tempGameData: GameData | null = null;
 
-  private readonly buttonGap = 10;
   /** @returns "[field] is required" */
   private static ERR_REQUIRED_FIELD(field: string) {
     if (field === "username") {
@@ -70,11 +69,11 @@ export class AdminUiHandler extends FormModalUiHandler {
           { label: "Username", isReadOnly: true },
           {
             label: "Discord ID",
-            isReadOnly: (this.adminResult?.discordId ?? "") !== "",
+            isReadOnly: true,
           },
           {
             label: "Google ID",
-            isReadOnly: (this.adminResult?.googleId ?? "") !== "",
+            isReadOnly: true,
           },
           { label: "Last played", isReadOnly: true },
           { label: "Registered", isReadOnly: true },
@@ -189,51 +188,6 @@ export class AdminUiHandler extends FormModalUiHandler {
         continue;
       }
       this.inputs[i].setText(adminResult[aR]);
-      if (aR === "discordId" || aR === "googleId") {
-        // this is here to add the icons for linking/unlinking of google/discord IDs
-        const nineSlice = this.inputContainers[i].list.find(
-          (iC): iC is Phaser.GameObjects.NineSlice => iC.type === "NineSlice",
-        );
-        const img = globalScene.add.image(
-          this.inputContainers[i].x + nineSlice!.width + this.buttonGap,
-          this.inputContainers[i].y + Math.floor(nineSlice!.height / 2),
-          adminResult[aR] === "" ? "link_icon" : "unlink_icon",
-        );
-        img
-          .setName(`adminBtn_${aR}`)
-          .setOrigin()
-          .setInteractive()
-          .on("pointerdown", () => {
-            const service = aR.toLowerCase().replace("id", ""); // this takes our key (discordId or googleId) and removes the "Id" at the end to make it more url friendly
-            const mode = adminResult[aR] === "" ? "Link" : "Unlink"; // this figures out if we're linking or unlinking a service
-            const validFields = this.areFieldsValid(this.adminMode, service);
-            if (validFields.error) {
-              globalScene.ui.setMode(UiMode.LOADING, { buttonActions: [] }); // this is here to force a loading screen to allow the admin tool to reopen again if there's an error
-              return this.showMessage(validFields.errorMessage ?? "", adminResult, true);
-            }
-            this.adminLinkUnlink(this.convertInputsToAdmin(), service as AdminUiHandlerService, mode).then(response => {
-              // attempts to link/unlink depending on the service
-              if (response.error) {
-                globalScene.ui.setMode(UiMode.LOADING, { buttonActions: [] });
-                return this.showMessage(response.errorType, adminResult, true); // fail
-              }
-              // success, reload panel with new results
-              globalScene.ui.setMode(UiMode.LOADING, { buttonActions: [] });
-              this.adminSearch(adminResult).then(searchResponse => {
-                if (searchResponse.error) {
-                  return this.showMessage(searchResponse.errorType, adminResult, true);
-                }
-                return this.showMessage(
-                  AdminUiHandler.SUCCESS_SERVICE_MODE(service, mode),
-                  searchResponse.adminSearchResult ?? adminResult,
-                  false,
-                );
-              });
-            });
-          });
-        this.addInteractionHoverEffect(img);
-        this.modalContainer.add(img);
-      }
     }
   }
 
@@ -241,7 +195,7 @@ export class AdminUiHandler extends FormModalUiHandler {
    * This is used to update the fields' text when loading in a new admin ui handler. It uses the {@linkcode adminResult}
    * to update the input text based on the {@linkcode adminMode}. For a linking adminMode, it sets the username and discord.
    * For a search adminMode, it sets the username. For an admin adminMode, it sets all the info from adminResult in the
-   * appropriate text boxes, and also sets the link/unlink icons for discord/google depending on the result
+   * appropriate text boxes, and displays the account details
    */
   private populateFields(adminMode: AdminMode, adminResult: SearchAccountResponse) {
     switch (adminMode) {

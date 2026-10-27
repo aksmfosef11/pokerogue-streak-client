@@ -59,13 +59,30 @@ for (const name of [
 ]) {
   assert.ok(new RegExp(`patch\\(\\s*${name}\\.prototype`).test(addon), `missing addon boundary: ${name}`);
 }
-const brandingFiles = ["src/data/splash-messages.ts", "src/ui/handlers/menu-ui-handler.ts"];
+for (const root of [".", "deployment/native/1.12.1.2", "deployment/native/1.12.2.0"]) {
+  const read = file => readFileSync(`${root}/${file}`, "utf8");
+  const menu = read("src/ui/handlers/menu-ui-handler.ts");
+  const login = read("src/ui/handlers/login-form-ui-handler.ts");
+  const data = read("src/system/game-data.ts");
+  assert.ok(!menu.includes("gameData.importData("), `${root}: save-file import returned`);
+  assert.ok(!data.includes("public importData("), `${root}: save-file importer returned`);
+  assert.ok(!menu.includes("/auth/google/") && !menu.includes("/auth/discord/"), `${root}: account linking returned`);
+  assert.ok(!login.includes("processExternalProvider("), `${root}: external login returned`);
+  assert.ok(menu.includes("tryExportData("), `${root}: save export was removed`);
+}
+// These UI files intentionally remove unavailable sign-in/linking features.
+const customizedFiles = [
+  "src/data/splash-messages.ts",
+  "src/ui/handlers/menu-ui-handler.ts",
+  "src/ui/handlers/login-form-ui-handler.ts",
+  "src/ui/handlers/admin-ui-handler.ts",
+];
 const changed = execFileSync("git", ["diff", "--name-only", "vendor", "--", "src"], { encoding: "utf8" })
   .trim()
   .split(/\r?\n/)
   .filter(Boolean);
 assert.deepEqual(
-  changed.filter(file => !file.startsWith("src/pvp/") && !Object.hasOwn(hooks, file) && !brandingFiles.includes(file)),
+  changed.filter(file => !file.startsWith("src/pvp/") && !Object.hasOwn(hooks, file) && !customizedFiles.includes(file)),
   [],
   "upstream changes exceed the guarded seam allowlist",
 );

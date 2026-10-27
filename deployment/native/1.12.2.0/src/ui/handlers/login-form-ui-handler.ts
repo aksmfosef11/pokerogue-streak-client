@@ -3,7 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { UiMode } from "#enums/ui-mode";
 import type { ModalConfig } from "#types/ui-types";
 import type { InputFieldConfig } from "#ui/form-modal-ui-handler";
-import { OAuthProvidersUiHandler } from "#ui/oauth-providers-ui-handler";
+import { LoginRegisterInfoContainerUiHandler } from "#ui/login-register-info-container-ui-handler";
 import i18next from "i18next";
 
 // TODO: Consider replacing server error strings with numeric error codes for better maintainability
@@ -15,7 +15,7 @@ const ERR_PASSWORD_MISMATCH = "password doesn't match";
 const ERR_FAILED_TO_GENERATE_TOKEN = "failed to generate token";
 const ERR_FAILED_TO_ADD_SESSION = "failed to add account session";
 
-export class LoginFormUiHandler extends OAuthProvidersUiHandler {
+export class LoginFormUiHandler extends LoginRegisterInfoContainerUiHandler {
   public override getModalTitle(): string {
     if (import.meta.env.VITE_SERVER_URL === "https://apibeta.pokerogue.net") {
       return i18next.t("menu:loginBeta");
@@ -80,7 +80,6 @@ export class LoginFormUiHandler extends OAuthProvidersUiHandler {
       return false;
     }
     const config = args[0] as ModalConfig;
-    this.processExternalProvider();
     this.showInfoContainer(config);
     const originalLoginAction = this.submitAction;
     this.submitAction = () => {

@@ -98,9 +98,10 @@ function nativeSource() {
     git(["archive", "--format=tar", "--output", archive, `v${version}`, "src"]);
     run("tar", ["-xf", archive, "-C", pristine]);
     unlinkSync(archive);
-    const brandingFiles = ["src/data/splash-messages.ts", "src/ui/handlers/menu-ui-handler.ts"];
-    const expected = walk(pristine).filter(f => !seams.includes(f) && !brandingFiles.includes(f)),
-      actual = walk(resolve(workspace, p.directory)).filter(f => !seams.includes(f) && !brandingFiles.includes(f) && !f.startsWith("src/pvp/"));
+    // UI customizations disable external accounts and save-file imports.
+    const customizedFiles = ["src/data/splash-messages.ts", "src/ui/handlers/menu-ui-handler.ts", "src/ui/handlers/login-form-ui-handler.ts", "src/ui/handlers/admin-ui-handler.ts"];
+    const expected = walk(pristine).filter(f => !seams.includes(f) && !customizedFiles.includes(f)),
+      actual = walk(resolve(workspace, p.directory)).filter(f => !seams.includes(f) && !customizedFiles.includes(f) && !f.startsWith("src/pvp/"));
     assert.deepEqual(actual.sort(), expected.sort(), `${version}: native file set changed`);
     for (const file of expected)
       assert.equal(
