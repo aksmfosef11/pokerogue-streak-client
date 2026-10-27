@@ -16,7 +16,8 @@
   // so it's safe to use glob syntax like this as files in `.github/scripts/` won't be grabbed
   // unless `.github/` is specifically added.
   "include": ["../**/*.ts"],
-  "exclude": ["../node_modules", "../dist", "**/*.boilerplate.ts"],
+  // Native engines have their own aliases and must be checked from their own roots.
+  "exclude": ["../node_modules", "../dist", "../deployment", "**/*.boilerplate.ts"],
   "compilerOptions": {
     // Note: make sure more specific paths appear before less specific paths
     "paths": {

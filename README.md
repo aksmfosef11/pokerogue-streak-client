@@ -1,5 +1,7 @@
 # PokéRogue Streak Client
 
+작업·배포 기본 브랜치는 `streak`입니다. 공식 저장소의 브랜치와 원본 커밋 이력을 함께 유지합니다.
+
 포케로그 기반 연승전 클라이언트입니다. 기본 게임/공통 대전 엔진은 **1.12.2.0**이며, 1.12.1.2·1.12.1.3 엔진도 함께 제공합니다. 루트 `package.json`의 1.12.1.3은 PvP 애드온의 기준 엔진입니다.
 
 서버: [pokerogue-streak-server](https://github.com/aksmfosef11/pokerogue-streak-server). 원본: [pagefaultgames/pokerogue](https://github.com/pagefaultgames/pokerogue).
