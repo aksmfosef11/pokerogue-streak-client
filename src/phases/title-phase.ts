@@ -24,6 +24,7 @@ import type { OptionSelectItem, OptionSelectModeConfig } from "#types/ui-types";
 import { SaveSlotUiMode } from "#ui/save-slot-select-ui-handler";
 import { isLocalServerConnected } from "#utils/common";
 import i18next from "i18next";
+import { openLatestGame, pvpBoot, pvpMenuOptions } from "../pvp";
 
 const NO_SAVE_SLOT = -1;
 
@@ -46,6 +47,20 @@ export class TitlePhase extends Phase {
       audioManager.playBgm("title", true);
     }
 
+    if (
+      await pvpBoot(
+        () => {
+          this.loaded = true;
+          this.end();
+        },
+        async () => {
+          this.loaded = false;
+          await this.showOptions(await this.checkLastSaveSlot());
+        },
+      )
+    ) {
+      return;
+    }
     const lastSlot = await this.checkLastSaveSlot();
     await this.showOptions(lastSlot);
   }
@@ -96,6 +111,9 @@ export class TitlePhase extends Phase {
       {
         label: i18next.t("menu:newGame"),
         handler: () => {
+          if (openLatestGame()) {
+            return true;
+          }
           const setModeAndEnd = (gameMode: GameModes) => {
             this.gameMode = gameMode;
             ui.setMode(UiMode.MESSAGE);
@@ -187,6 +205,12 @@ export class TitlePhase extends Phase {
         },
         keepOpen: true,
       },
+    );
+    options.push(
+      ...pvpMenuOptions(() => {
+        this.loaded = false;
+        return this.showOptions(lastSessionSlot);
+      }),
     );
     const config: OptionSelectModeConfig = { options, blockCancelButton: true };
     await ui.setMode(UiMode.TITLE, config);

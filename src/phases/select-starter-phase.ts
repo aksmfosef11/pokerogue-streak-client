@@ -11,6 +11,7 @@ import { overrideHeldItems, overrideModifiers } from "#modifiers/modifier";
 import type { Starter } from "#types/save-data";
 import { SaveSlotUiMode } from "#ui/save-slot-select-ui-handler";
 import { applyChallenges } from "#utils/challenge-utils";
+import { prepareRankedRun } from "../pvp/log";
 
 export class SelectStarterPhase extends Phase {
   public readonly phaseName = "SelectStarterPhase";
@@ -38,7 +39,8 @@ export class SelectStarterPhase extends Phase {
    * Initialize starters before starting the first battle
    * @param starters - Array of {@linkcode Starter}s with which to start the battle
    */
-  initBattle(starters: Starter[]) {
+  async initBattle(starters: Starter[]) {
+    await prepareRankedRun(starters);
     const party = globalScene.getPlayerParty();
     const loadPokemonAssets: Promise<void>[] = [];
     starters.forEach((starter: Starter, i: number) => {

@@ -47,3 +47,20 @@ coverage
 # Script outputs
 *.csv
 game-data-output/*
+/test/fixtures/pvp/audit-result.json
+
+# Private operator state
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.sql
+*.sqlite
+*.db
+*.local.*
+review/
+backups/
+userdata/
+.data/
+/docs/pvp-version-release.md

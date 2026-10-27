@@ -59,7 +59,6 @@ const SEASONAL_WEIGHT_MULTIPLIER = 15;
 const commonSplashMessages = [
   ...new Array(BATTLES_WON_WEIGHT_MULTIPLIER).fill("battlesWon"),
   ...new Array(POKEMON_NAMES_WEIGHT_MULTIPLIER).fill("underratedPokemon"),
-  "joinTheDiscord",
   "infiniteLevels",
   "everythingIsStackable",
   "optionalSaveScumming",

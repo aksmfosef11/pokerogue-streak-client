@@ -32,6 +32,7 @@ import { SHOP_OPTIONS_ROW_LIMIT } from "#ui/modifier-select-ui-handler";
 import { PartyOption, PartyUiHandler } from "#ui/party-ui-handler";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";
+import { logShop, logShopOffer } from "../pvp/log";
 
 export type ModifierSelectCallback = (rowCursor: number, cursor: number) => boolean;
 
@@ -78,8 +79,10 @@ export class SelectModifierPhase extends BattlePhase {
     const modifierCount = this.getModifierCount();
 
     this.typeOptions = this.getModifierTypeOptions(modifierCount);
+    logShopOffer(this, this.typeOptions);
 
     const modifierSelectCallback = (rowCursor: number, cursor: number) => {
+      logShop({ rowCursor, cursor, rerolls: this.rerollCount });
       if (rowCursor < 0 || cursor < 0) {
         globalScene.ui.showText(i18next.t("battle:skipItemQuestion"), null, () => {
           const skipRewardConfirmOptions: ConfirmModeConfig = {

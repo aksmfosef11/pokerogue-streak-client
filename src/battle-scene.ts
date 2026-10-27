@@ -110,6 +110,7 @@ import type { Achv } from "#system/achv";
 import { achvs, ModifierAchv, MoneyAchv } from "#system/achv";
 import { GameData } from "#system/game-data";
 import { initGameSpeed } from "#system/game-speed";
+import { ModifierData as PvpModifierData } from "#system/modifier-data";
 import type { PokemonData } from "#system/pokemon-data";
 import type { Voucher } from "#system/voucher";
 import { vouchers } from "#system/voucher";
@@ -158,6 +159,7 @@ import { decodeNickname } from "#utils/pokemon-utils";
 import { capitalizeFirstLetterOnly } from "#utils/strings";
 import i18next from "i18next";
 import Phaser from "phaser";
+import { logItem } from "./pvp/log";
 
 export type PokeballCounts = Record<Exclude<PokeballType, PokeballType.LUXURY_BALL>, number>;
 
@@ -2393,6 +2395,9 @@ export class BattleScene extends SceneBase {
     // TODO: This is not the right place to check for this; it should ideally go in a session migrator.
     if (!modifier || !modifier.type) {
       return false;
+    }
+    if (modifier instanceof PersistentModifier) {
+      logItem(new PvpModifierData(modifier, true), this.phaseManager.getCurrentPhase().phaseName, virtual);
     }
     let success = false;
     const soundName = modifier.type.soundName;

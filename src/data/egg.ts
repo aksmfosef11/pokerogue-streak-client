@@ -33,6 +33,7 @@ import { VariantTier } from "#enums/variant-tier";
 import type { PlayerPokemon } from "#field/pokemon";
 import { getIvsFromId, randInt, randomString, randSeedInt } from "#utils/common";
 import i18next from "i18next";
+import { beginEggProof, eggEntropy, finishEggProof } from "../pvp/egg-proof";
 
 export const EGG_SEED = 1073741824;
 
@@ -153,23 +154,25 @@ export class Egg {
   // #endregion Public facing properties
 
   constructor(eggOptions?: IEggOptions) {
+    const proof = beginEggProof(eggOptions);
     const generateEggProperties = (eggOptions?: IEggOptions) => {
       //if (eggOptions.tier && eggOptions.species) throw Error("Error egg can't have species and tier as option. only choose one of them.")
 
       this._sourceType = eggOptions?.sourceType!; // TODO: is this bang correct?
       // Ensure _sourceType is defined before invoking rollEggTier(), as it is referenced
-      this._tier = eggOptions?.tier ?? activeOverrides.EGG_TIER_OVERRIDE ?? this.rollEggTier();
+      this._tier =
+        eggOptions?.tier ?? activeOverrides.EGG_TIER_OVERRIDE ?? eggEntropy(proof, "tier", () => this.rollEggTier());
       // If egg was pulled, check if egg pity needs to override the egg tier
       if (eggOptions?.pulled) {
         // Needs this._tier and this._sourceType to work
         this.checkForPityTierOverrides();
       }
 
-      this._id = eggOptions?.id ?? randInt(EGG_SEED, EGG_SEED * this._tier);
+      this._id = eggOptions?.id ?? eggEntropy(proof, "id", () => randInt(EGG_SEED, EGG_SEED * this._tier));
 
       this._sourceType = eggOptions?.sourceType ?? undefined;
       this._hatchWaves = eggOptions?.hatchWaves ?? this.getEggTierDefaultHatchWaves();
-      this._timestamp = eggOptions?.timestamp ?? Date.now();
+      this._timestamp = eggOptions?.timestamp ?? proof?.receipt.options.timestamp ?? Date.now();
 
       // First roll shiny and variant so we can filter if species with an variant exist
       this._isShiny = eggOptions?.isShiny ?? (activeOverrides.EGG_SHINY_OVERRIDE || this.rollShiny());
@@ -200,7 +203,7 @@ export class Egg {
       }
     };
 
-    const seedOverride = randomString(24);
+    const seedOverride = proof?.seed ?? randomString(24);
     globalScene.executeWithSeedOffset(
       () => {
         generateEggProperties(eggOptions);
@@ -210,6 +213,7 @@ export class Egg {
     );
 
     this.eggDescriptor = eggOptions?.eggDescriptor;
+    finishEggProof(this, proof);
   }
 
   // #region Public methods

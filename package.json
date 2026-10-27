@@ -4,6 +4,10 @@
   "version": "1.12.1.3",
   "type": "module",
   "scripts": {
+    "pvp:check": "node scripts/pvp/check-hooks.mjs",
+    "pvp:export": "node scripts/pvp/export-rules.mjs",
+    "pvp:smoke": "node scripts/pvp/smoke.mjs",
+    "pvp:test": "vitest run test/tests/pvp --silent=passed-only",
     "start:prod": "vite --mode production",
     "start:beta": "vite --mode beta",
     "start:dev": "vite --mode development",
@@ -43,7 +47,7 @@
     "update-submodules": "git submodule update --progress --init --recursive --force --depth 1",
     "update-submodules:remote": "pnpm update-submodules --remote",
     "sample-movesets": "vite-node scripts/gen-moveset/gen-moveset-driver.ts",
-    "game-data:export": "vitest run --config scripts/game-data-exporter/game-data-exporter.config.ts scripts/game-data-exporter/run.test.ts --"
+    "game-data:export": "node scripts/pvp/export-game-data.mjs"
   },
   "dependencies": {
     "@material/material-color-utilities": "^0.4.0",

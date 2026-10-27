@@ -79,6 +79,12 @@ import { toCamelCase } from "#utils/strings";
 import { ValueHolder } from "#utils/value-holder";
 import { AES, enc } from "crypto-js";
 import i18next from "i18next";
+import { finalizeRun, recordWave, registerClearedRun } from "../pvp/log";
+import { isPvpMatchActive, pvpEnabled } from "../pvp/state";
+import { isBattleClient } from "../pvp/battle-route";
+import { campaignUpgradePath } from "../pvp/campaign-upgrade";
+import { applyBattlePlayer, type BattlePlayer } from "../pvp/battle-player";
+import { pvpT } from "../pvp/i18n";
 
 const ErrorMessages = {
   OUT_OF_DATE: i18next.t("gameData:reloadSaveData"),
@@ -262,6 +268,9 @@ export class GameData {
   }
 
   public async saveSystem(): Promise<boolean> {
+    if (isPvpMatchActive()) {
+      return true;
+    }
     const data = this.getSystemSaveData();
 
     if (!this.validateSystemData(data)) {
@@ -295,6 +304,23 @@ export class GameData {
   }
 
   public async loadSystem(): Promise<boolean> {
+    if (pvpEnabled && isBattleClient()) {
+      try {
+        const {pvpApi}=await import("../pvp/api");
+        const status=await pvpApi.request<{playerIdentity?:BattlePlayer}>("status");
+        applyBattlePlayer(this,status.playerIdentity);
+      } catch(error){console.warn("Failed to check battle player info:",error);applyBattlePlayer(this,undefined);}
+      return true;
+    }
+    if (pvpEnabled) {
+      try {
+        const path = await campaignUpgradePath();
+        if (path) { location.replace(path); return new Promise<boolean>(() => {}); }
+      } catch (error) {
+        await globalScene.ui.setMode(UiMode.ALERT_MODAL, pvpT("updateCheckFailed", { error: String(error) }));
+        return new Promise<boolean>(() => {});
+      }
+    }
     console.log("Client Session:", clientSessionId);
 
     if (bypassLogin && !localStorage.getItem(`data_${loggedInUser?.username}`)) {
@@ -439,6 +465,12 @@ export class GameData {
       }
 
       if (!isDev && !isBeta && compareVersions(systemData.gameVersion, version) === 1) {
+        if(pvpEnabled){
+          const {pvpApi}=await import("../pvp/api");
+          const status=await pvpApi.request<{enginePaths?:Record<string,string>}>("status");
+          const path=status.enginePaths?.[systemData.gameVersion];
+          if(path){location.replace(path);return new Promise<boolean>(()=>{});}
+        }
         await globalScene.ui.setMode(UiMode.ALERT_MODAL, ErrorMessages.GAME_OUT_OF_DATE);
 
         globalScene.time.delayedCall(fixedInt(1000), () => {
@@ -449,6 +481,9 @@ export class GameData {
         return false;
       }
       this.initParsedSystem(systemData);
+      if (pvpEnabled && systemData.gameVersion !== version && Number(version.split(".")[2]) >= 2) {
+        return await this.saveSystem();
+      }
       return true;
     } catch (err) {
       console.error(err);
@@ -1072,6 +1107,10 @@ export class GameData {
    * To delete an unfinished run instead, use {@linkcode deleteSession}
    */
   async tryClearSession(slotId: number): Promise<[success: boolean, newClear: boolean]> {
+    if (isPvpMatchActive()) {
+      return [true, false];
+    }
+    await finalizeRun(globalScene.seed).catch(err => console.warn("PvP run finalize error:", err));
     const [success] = await updateUserInfo();
     if (!success) {
       return [false, false];
@@ -1083,6 +1122,7 @@ export class GameData {
     }
 
     const sessionData = this.getSessionSaveData();
+    const clearAccount = loggedInUser?.username;
     const { trainerId } = this;
     const jsonResponse = await pokerogueApi.savedata.session.clear(
       { slot: slotId, trainerId, clientSessionId },
@@ -1090,6 +1130,7 @@ export class GameData {
     );
 
     if (!jsonResponse.error) {
+      registerClearedRun(sessionData, clearAccount);
       localStorage.removeItem(getSessionDataLocalStorageKey(slotId));
       return [true, !!jsonResponse.success];
     }
@@ -1193,6 +1234,12 @@ export class GameData {
     useCachedSession = false,
     useCachedSystem = false,
   ): Promise<boolean> {
+    if (isPvpMatchActive()) {
+      return true;
+    }
+    if (pvpEnabled && globalScene.currentBattle) {
+      await recordWave(this.getSessionSaveData(), sync).catch(err => console.warn("PvP wave record error:", err));
+    }
     if (!skipVerification) {
       const [success] = await updateUserInfo();
       if (!success) {

@@ -40,7 +40,7 @@ enum MenuOptions {
 }
 
 let wikiUrl = import.meta.env.VITE_WIKI_URL;
-const { VITE_DISCORD_URL, VITE_GITHUB_URL, VITE_REDDIT_URL, VITE_DONATE_URL } = import.meta.env;
+const { VITE_DISCORD_URL, VITE_GITHUB_URL, VITE_REDDIT_URL } = import.meta.env;
 
 export class MenuUiHandler extends OptionSelectUiHandler {
   private readonly textPadding = 8;
@@ -416,48 +416,51 @@ export class MenuUiHandler extends OptionSelectUiHandler {
   private initCommunityMenuOptions(): void {
     const ui = this.getUi();
 
-    const communityOptions: OptionSelectItem[] = [
-      {
+    const communityOptions: OptionSelectItem[] = [];
+
+    if (wikiUrl) {
+      communityOptions.push({
         label: "Wiki",
         handler: () => {
           window.open(wikiUrl, "_blank")?.focus();
           return true;
         },
         keepOpen: true,
-      },
-      {
+      });
+    }
+
+    if (VITE_DISCORD_URL) {
+      communityOptions.push({
         label: "Discord",
         handler: () => {
           window.open(VITE_DISCORD_URL, "_blank")?.focus();
           return true;
         },
         keepOpen: true,
-      },
-      {
+      });
+    }
+
+    if (VITE_GITHUB_URL) {
+      communityOptions.push({
         label: "GitHub",
         handler: () => {
           window.open(VITE_GITHUB_URL, "_blank")?.focus();
           return true;
         },
         keepOpen: true,
-      },
-      {
+      });
+    }
+
+    if (VITE_REDDIT_URL) {
+      communityOptions.push({
         label: "Reddit",
         handler: () => {
           window.open(VITE_REDDIT_URL, "_blank")?.focus();
           return true;
         },
         keepOpen: true,
-      },
-      {
-        label: i18next.t("menuUiHandler:donate"),
-        handler: () => {
-          window.open(VITE_DONATE_URL, "_blank")?.focus();
-          return true;
-        },
-        keepOpen: true,
-      },
-    ];
+      });
+    }
     if (bypassLogin || loggedInUser?.hasAdminRole) {
       communityOptions.push({
         label: "Admin",
