@@ -1,6 +1,5 @@
 import { pokerogueApi } from "#api/api";
 import { loggedInUser } from "#app/account";
-import { FAKE_TITLE_LOGO_CHANCE } from "#app/constants";
 import { eventBus } from "#app/event-bus";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
@@ -16,7 +15,7 @@ import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 import { TimedEventDisplay } from "#ui/event-display";
 import { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
 import { addTextObject } from "#ui/text";
-import { fixedInt, randInt, randItem } from "#utils/common";
+import { fixedInt, randItem } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
 import i18next, { type TOptions } from "i18next";
 
@@ -72,8 +71,9 @@ export class TitleUiHandler extends OptionSelectUiHandler {
     ui.add(this.titleContainer);
 
     const logo = globalScene.add
-      .image(width / 2, 8, this.getLogo()) // formatting
-      .setOrigin(0.5, 0);
+      .image(width / 2, 8, "pvp_title_logo") // formatting
+      .setOrigin(0.5, 0)
+      .setDisplaySize(150, 33);
 
     if (timedEventManager.isEventActive()) {
       this.eventDisplay = new TimedEventDisplay(0, 0, timedEventManager.activeEvent());
@@ -245,17 +245,6 @@ export class TitleUiHandler extends OptionSelectUiHandler {
       alpha: (target: any) => (target === this.titleContainer ? 0 : 1),
       ease: "Sine.easeInOut",
     });
-  }
-
-  /**
-   * Get the logo file path to load, with a 0.1% chance to use the fake logo instead.
-   * @returns The path to the image.
-   */
-  private getLogo(): string {
-    // Invert spawn chances on april fools
-    const aprilFools = timedEventManager.isAprilFoolsActive();
-    const logoKey = timedEventManager.getLogoKey();
-    return aprilFools === !!randInt(FAKE_TITLE_LOGO_CHANCE) ? "logo_fake" : logoKey;
   }
 
   /** Adds a snow effect on the title screen during the winter season. */

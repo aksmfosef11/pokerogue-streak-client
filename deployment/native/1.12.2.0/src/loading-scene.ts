@@ -12,6 +12,7 @@ import { hasAllLocalizedSprites, localPing } from "#utils/common";
 import { enumValueToKey, getEnumValues } from "#utils/enums";
 import i18next from "i18next";
 import type { GameObjects } from "phaser";
+import pvpTitleLogoUrl from "./assets/pvp-title-logo.svg?no-inline";
 
 export class LoadingScene extends SceneBase {
   public static readonly KEY = "loading";
@@ -26,6 +27,7 @@ export class LoadingScene extends SceneBase {
 
   preload() {
     localPing();
+    this.load.svg("pvp_title_logo", pvpTitleLogoUrl);
     const startingBiome = activeOverrides.STARTING_BIOME_OVERRIDE ?? globalScene?.arena?.biomeId ?? BiomeId.TOWN;
     // TODO: Categorize these into sub-methods that make sense
     // I'm 99.9% sure the order doesn't matter here,
