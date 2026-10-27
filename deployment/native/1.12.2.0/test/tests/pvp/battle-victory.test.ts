@@ -146,13 +146,13 @@ describe("Complete native PvP victory through the production controller", () => 
       }
       await setMode.call(scene.ui, mode, ...args);
       const config = args[0] as any;
-      if (mode === UiMode.OPTION_SELECT && config?.options?.[0]?.label === "다시 시도") {
+      if (mode === UiMode.OPTION_SELECT && ["다시 시도", "Retry"].includes(config?.options?.[0]?.label)) {
         queueMicrotask(() => config.options[0].handler());
       }
     });
     const showText = scene.ui.showText;
     vi.spyOn(scene.ui, "showText").mockImplementation((text, delay, next, ...args) => {
-      if (/^(연습 연승전|연승전 ·|연습전 |연승전:)/.test(text)) {
+      if (/^(연습 연승전|연승전 ·|연습전 |연승전:|Streak Battle)/.test(text)) {
         if (next) {
           queueMicrotask(next);
         }

@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import type { Command } from "#enums/command";
 import type { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";
+import { EnemyPokemon } from "#field/pokemon";
 import { BattleEndPhase } from "#phases/battle-end-phase";
 import { CommandPhase } from "#phases/command-phase";
 import { EnemyCommandPhase } from "#phases/enemy-command-phase";
@@ -12,6 +13,7 @@ import { SwitchPhase } from "#phases/switch-phase";
 import { VictoryPhase } from "#phases/victory-phase";
 import { logBattleEnd, logDreamTransformations, logEncounterChoice } from "./log";
 import { isPvpMatchActive } from "./state";
+import { chooseTrainerTera, trainerPersonality, withTrainerMoveWeights } from "./trainer-ai";
 
 interface BattleHooks {
   handlePvpForfeit(command: Command, resume: () => void): boolean;
@@ -107,7 +109,38 @@ export function installBattleHooks(handlers: BattleHooks): () => void {
         if (isPvpMatchActive() && handlers.pausePvpTurn(this)) {
           return;
         }
-        return original.call(this);
+        const profile = isPvpMatchActive() ? trainerPersonality() : undefined;
+        const trainer = globalScene.currentBattle.trainer;
+        if (!profile || !trainer) {
+          return original.call(this);
+        }
+        const scores = trainer.getPartyMemberMatchupScores;
+        const shouldTera = trainer.shouldTera;
+        trainer.getPartyMemberMatchupScores = function (slot, forSwitch) {
+          const result = scores.call(this, slot, forSwitch);
+          return forSwitch ? result.map(([index, score]) => [index, (score * 3) / profile.switchThreshold]) : result;
+        };
+        trainer.shouldTera = pokemon =>
+          !Reflect.get(this, "skipTurn")
+          && chooseTrainerTera(
+            pokemon,
+            globalScene.currentBattle.turn,
+            globalScene.getEnemyParty().filter(p => p.isAllowedInBattle()).length,
+          );
+        try {
+          return original.call(this);
+        } finally {
+          trainer.getPartyMemberMatchupScores = scores;
+          trainer.shouldTera = shouldTera;
+        }
+      },
+  );
+  patch(
+    EnemyPokemon.prototype,
+    "getNextMove",
+    original =>
+      function (this: EnemyPokemon) {
+        return isPvpMatchActive() ? withTrainerMoveWeights(this, () => original.call(this)) : original.call(this);
       },
   );
   patch(

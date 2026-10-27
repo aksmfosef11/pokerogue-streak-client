@@ -26,6 +26,7 @@ import { openRanking, partyMemberName, showRankedTeam, type RankedTeam } from ".
 import { closePvpPanel, panelUi, showPvpPanel } from "./panel";
 import { isPvpMatchActive, pvpEnabled, setPvpMatchActive } from "./state";
 import { pvpT } from "./i18n";
+import { configureTrainerAi } from "./trainer-ai";
 
 interface Decision {
   index: number;
@@ -112,6 +113,7 @@ function returnToLobby(): void {
   match = undefined;
   finishing = false;
   setPvpMatchActive(false);
+  configureTrainerAi();
   globalScene.reset(false, false);
   if (previousBattleStyle != null) settings.general.battleStyle = previousBattleStyle;
   previousBattleStyle = undefined;
@@ -398,6 +400,7 @@ async function loadMatch(data: Match, onReady: () => void): Promise<void> {
     return;
   }
   match = data;
+  configureTrainerAi(typeof data.session.seed === "string" ? data.session.seed : data.id);
   nextIndex = 0;
   committedTurn = -1;
   finishing = false;
